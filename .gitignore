@@ -1,3 +1,6 @@
 /target
 **/*.rs.bk
 Cargo.lock
+
+# MacOS workaround to compile cpython dylib
+/.cargo

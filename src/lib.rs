@@ -1,8 +1,9 @@
 #[macro_use]
 extern crate cpython;
-use cpython::{Python, PyResult, PyDict, ToPyObject};
+use cpython::{Python, PyResult, PyDict, FromPyObject, ToPyObject};
 use std::fs::File;
 use std::io::prelude::*;
+use std::collections::HashMap;
 
 struct Seq {
     seq_id: String,
@@ -20,6 +21,7 @@ impl Seq {
     }
 }
 
+ 
 impl ToPyObject for Seq {
     type ObjectType = PyDict;
 
@@ -33,8 +35,19 @@ impl ToPyObject for Seq {
     }
 }
 
+impl<'source> FromPyObject for Seq {
+    fn extract(py: Python, obj: &'source PyObject) -> PyResult<Self> {
+        let seq = Seq {
+            seq_id: match obj.get_item,
+            description: "",
+            sequence: "",
+        }
+        Ok(seq)
+    }
+}
+
 // TODO: Change output to Some<Vec<Seq>> to account for error
-fn parse_fasta(path: &str) -> Vec<Seq> {
+fn read_fasta(path: &str) -> Vec<Seq> {
     // Open path in read-only mode
     // Returns io::Result<File>
     let mut file = match File::open(path) {
@@ -91,15 +104,69 @@ fn parse_fasta(path: &str) -> Vec<Seq> {
     seq_list 
 }
 
-// Wraps parse_fasta in order to be exportable
-fn py_parse_fasta(_py: Python, path: &str) -> PyResult<Vec<Seq>> {
-    let out = parse_fasta(path);
+// Wraps read_fasta in order to be exportable
+fn py_read_fasta(_py: Python, path: &str) -> PyResult<Vec<Seq>> {
+    let out = read_fasta(path);
+    Ok(out)
+}
+
+fn write_fastq(sequences: Vec<Seq>, path: &str, linewidth: i32) {
+    let mut file = match File::create(path) {
+        Ok(file) => file,
+        Err(x) => panic!("couldn't create {}: {}", path, x),
+    };
+    let mut str_list: Vec<String> = Vec::new();
+    for seq in sequences {
+        {
+            let mut line = String::new();
+            if let Some(&seq_id) = seq.get(&"seq_id") {
+                line = format!(">{}", seq_id);
+            } else {
+                panic!("seq_id key not found!");
+            }
+
+            if let Some(&desc) = seq.get(&"description") {
+                if desc.len() > 0 {
+                    line = format!("{} {}", line, desc);
+                }
+                panic!("description key not found!");   
+            }
+            str_list.push(line)
+        }
+
+        if let Some(&sequence) = seq.get(&"sequence") {
+            if linewidth == -1 {
+                str_list.push(sequence.to_string()); 
+            } else if linewidth > 0 {
+                let sub_seqs = sequence.as_bytes()
+                    .chunks(linewidth as usize)
+                    .map(|s| unsafe { ::std::str::from_utf8_unchecked(s).to_string() })
+                    .collect::<Vec<_>>();
+                str_list.extend(sub_seqs);
+            } else {
+                panic!("line width must be > 0 or -1")
+            }
+        } else {
+            panic!("sequence key not found!");
+        }
+    }
+    let data = str_list.join("\n");
+    match file.write_all(data.as_bytes()) {
+        Ok(_) => (),
+        Err(x) => panic!("couldn't write to {}: {}", path, x)
+    }
+}
+
+// Wraps write_fastq in order to be exportable
+fn py_write_fastq(_py: Python, sequences: Vec<HashMap<&str,&str>>, path: &str, linewidth: i32) -> PyResult<()> {
+    let out = write_fastq(sequences, path, linewidth);
     Ok(out)
 }
 
 py_module_initializer!(fastrust, initfastrust, PyInit_fastrust, |py, m| { 
-    m.add(py, "parse_fasta", py_fn!(py, 
-        py_parse_fasta(path: &str)))?;
+    m.add(py, "read_fasta", py_fn!(py, py_read_fasta(path: &str)))?;
+    m.add(py, "write_fastq", py_fn!(py, 
+        py_write_fastq(sequences: Vec<HashMap<&str,&str>>, path: &str, linewidth: i32)))?;
 
     Ok(())
 });

@@ -33,6 +33,7 @@ impl ToPyObject for Seq {
     }
 }
 
+// TODO: Change output to Some<Vec<Seq>> to account for error
 fn parse_fasta(path: &str) -> Vec<Seq> {
     // Open path in read-only mode
     // Returns io::Result<File>
@@ -77,6 +78,14 @@ fn parse_fasta(path: &str) -> Vec<Seq> {
         } else {
             sequence.push(line.trim_right().to_string());
         }
+    }
+    if sequence.len() > 0 {
+        // Create a Seq struct and push to seq_list
+        let seq = sequence.concat();
+        let s = Seq::new(seq_id, desc, &seq);
+        seq_list.push(s);
+
+        // Clear contents
     }
     
     seq_list 

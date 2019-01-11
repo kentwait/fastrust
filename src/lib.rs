@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate cpython;
+use cpython::{Python, PyResult, PyDict, ToPyObject};
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -14,6 +17,19 @@ impl Seq {
             description: description.to_string(),
             sequence: sequence.to_string(),
         }
+    }
+}
+
+impl ToPyObject for Seq {
+    type ObjectType = PyDict;
+
+    fn to_py_object(&self, py: Python) -> PyDict {
+        let dict = PyDict::new(py);
+        dict.set_item(py, "seq_id", self.seq_id.as_str()).unwrap();
+        dict.set_item(py, "description", self.description.as_str()).unwrap();
+        dict.set_item(py, "sequence", self.sequence.as_str()).unwrap();
+
+        dict
     }
 }
 
@@ -65,6 +81,19 @@ fn parse_fasta(path: &str) -> Vec<Seq> {
     
     seq_list 
 }
+
+// Wraps parse_fasta in order to be exportable
+fn py_parse_fasta(_py: Python, path: &str) -> PyResult<Vec<Seq>> {
+    let out = parse_fasta(path);
+    Ok(out)
+}
+
+py_module_initializer!(fastrust, initfastrust, PyInit_fastrust, |py, m| { 
+    m.add(py, "parse_fasta", py_fn!(py, 
+        py_parse_fasta(path: &str)))?;
+
+    Ok(())
+});
 
 #[cfg(test)]
 mod tests {
